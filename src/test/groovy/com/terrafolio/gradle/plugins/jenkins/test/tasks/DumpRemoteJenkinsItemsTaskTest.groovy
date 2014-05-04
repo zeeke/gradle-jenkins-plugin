@@ -1,10 +1,8 @@
 package com.terrafolio.gradle.plugins.jenkins.test.tasks
 
-import org.gradle.api.Incubating
 import org.junit.Rule
 import org.junit.Test
 
-@Incubating
 class DumpRemoteJenkinsItemsTaskTest {
 
     @Rule

@@ -4,7 +4,9 @@ import com.terrafolio.gradle.plugins.jenkins.dsl.JenkinsConfigurable
 import com.terrafolio.gradle.plugins.jenkins.dsl.JenkinsServerDefinition
 import com.terrafolio.gradle.plugins.jenkins.service.BuildDirService
 import com.terrafolio.gradle.plugins.jenkins.service.JenkinsService
+import org.gradle.api.Incubating
 
+@Incubating
 class DumpRemoteJenkinsItemsTask extends AbstractJenkinsTask {
 
     @Override

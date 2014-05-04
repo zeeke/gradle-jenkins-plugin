@@ -31,8 +31,6 @@ class TestFixtures implements TestRule {
         ] as Statement
     }
 
-
-
     private void setupProject() {
         plugin.apply(project)
 
