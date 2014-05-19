@@ -1,6 +1,5 @@
 buildscript {
 	repositories {
-		mavenCentral()
 		jcenter()
 	}
 
@@ -32,6 +31,8 @@ dependencies {
 	compile('org.jenkins-ci.plugins:job-dsl-core:1.22') {
 	   exclude(module: 'groovy-all')
 	}
+
+    testCompile 'com.netflix.nebula:nebula-test:1.9.8'
 }
 
 afterEvaluate {
