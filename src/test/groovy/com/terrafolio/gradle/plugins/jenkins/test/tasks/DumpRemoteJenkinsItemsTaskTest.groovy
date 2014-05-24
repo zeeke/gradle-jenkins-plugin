@@ -1,29 +1,127 @@
 package com.terrafolio.gradle.plugins.jenkins.test.tasks
 
-import org.junit.Rule
-import org.junit.Test
+import com.terrafolio.gradle.plugins.jenkins.tasks.AbstractJenkinsTask
+import com.terrafolio.gradle.plugins.jenkins.tasks.DumpRemoteJenkinsItemsTask
+import org.custommonkey.xmlunit.Diff
+import org.custommonkey.xmlunit.XMLUnit
 
-class DumpRemoteJenkinsItemsTaskTest {
+/**
+ * Created by ghale on 5/21/14.
+ */
+class DumpRemoteJenkinsItemsTaskTest extends JenkinsPluginTaskSpec {
+    @Override
+    AbstractJenkinsTask createTaskUnderTest() {
+        return project.task('taskUnderTest', type: DumpRemoteJenkinsItemsTask)
+    }
 
-    @Rule
-    public TestFixtures fixtures = new TestFixtures()
+    def "execute dumps one job" () {
+        setup:
+        def theproject = project
+        def jobDir = new File(project.buildDir, "remotes/test1/jobs")
+        def job1 = new File(jobDir, "compile_master.xml")
+        def viewDir = new File(project.buildDir, "remotes/test1/views")
+        XMLUnit.setIgnoreWhitespace(true)
 
-    @Test
-    def void execute_dumpItems() {
-        fixtures.mockJenkinsRESTService.demand.with {
-            3.times {
-                getConfiguration() { String jobName, Map overrides -> TestFixtures.BASE_JOB_XML }
-            }
+        when:
+        taskUnderTest.dump(project.jenkins.jobs.compile_master)
+        taskUnderTest.execute()
+
+        then:
+        1 * mockJenkinsRESTService.getConfiguration(theproject.jenkins.jobs.compile_master.definition.name, _) >> { BASE_JOB_XML }
+        job1.exists() && new Diff(BASE_JOB_XML, job1.getText()).similar()
+        jobDir.listFiles().length == 1
+        ! viewDir.exists()
+    }
+
+    def "execute dumps one job with lazy closure" () {
+        setup:
+        def theproject = project
+        def jobDir = new File(project.buildDir, "remotes/test1/jobs")
+        def job1 = new File(jobDir, "compile_master.xml")
+        def viewDir = new File(project.buildDir, "remotes/test1/views")
+        XMLUnit.setIgnoreWhitespace(true)
+
+        when:
+        taskUnderTest.dump { project.jenkins.jobs.compile_master }
+        taskUnderTest.execute()
+
+        then:
+        1 * mockJenkinsRESTService.getConfiguration(theproject.jenkins.jobs.compile_master.definition.name, _) >> { BASE_JOB_XML }
+        job1.exists() && new Diff(BASE_JOB_XML, job1.getText()).similar()
+        jobDir.listFiles().length == 1
+        ! viewDir.exists()
+    }
+
+    def "execute dumps one view" () {
+        setup:
+        def theproject = project
+        def jobDir = new File(project.buildDir, "remotes/test1/jobs")
+        def viewDir = new File(project.buildDir, "remotes/test1/views")
+        def view1 = new File(viewDir, "test view.xml")
+        def viewXml = project.jenkins.views."test view".xml
+        XMLUnit.setIgnoreWhitespace(true)
+
+        when:
+        taskUnderTest.dump(project.jenkins.views."test view")
+        taskUnderTest.execute()
+
+        then:
+        1 * mockJenkinsRESTService.getConfiguration(theproject.jenkins.views."test view".name, _) >> { viewXml }
+        view1.exists() && new Diff(viewXml, view1.getText()).similar()
+        viewDir.listFiles().length == 1
+        ! jobDir.exists()
+    }
+
+    def "execute dumps multiple items" () {
+        setup:
+        def theproject = project
+        def jobDir = new File(project.buildDir, "remotes/test1/jobs")
+        def job1 = new File(jobDir, "compile_master.xml")
+        def jobXml = BASE_JOB_XML
+        def viewDir = new File(project.buildDir, "remotes/test1/views")
+        def view1 = new File(viewDir, "test view.xml")
+        def viewXml = project.jenkins.views."test view".xml
+        XMLUnit.setIgnoreWhitespace(true)
+
+        when:
+        taskUnderTest.dump(project.jenkins.jobs.compile_master)
+        taskUnderTest.dump(project.jenkins.views."test view")
+        taskUnderTest.execute()
+
+        then:
+        with (mockJenkinsRESTService) {
+            1 * getConfiguration(theproject.jenkins.jobs.compile_master.definition.name, _) >> { jobXml }
+            1 * getConfiguration(theproject.jenkins.views."test view".name, _) >> { viewXml }
         }
+        job1.exists() && new Diff(BASE_JOB_XML, job1.getText()).similar()
+        jobDir.listFiles().length == 1
+        view1.exists() && new Diff(viewXml, view1.getText()).similar()
+        viewDir.listFiles().length == 1
+    }
 
-        fixtures.mockJenkinsRESTService.use {
-            fixtures.project.tasks.dumpRemoteJenkinsItems.execute()
+    def "execute dumps multiple items and lazy closure" () {
+        setup:
+        def theproject = project
+        def jobDir = new File(project.buildDir, "remotes/test1/jobs")
+        def job1 = new File(jobDir, "compile_master.xml")
+        def jobXml = BASE_JOB_XML
+        def viewDir = new File(project.buildDir, "remotes/test1/views")
+        def view1 = new File(viewDir, "test view.xml")
+        def viewXml = project.jenkins.views."test view".xml
+        XMLUnit.setIgnoreWhitespace(true)
+
+        when:
+        taskUnderTest.dump { [ project.jenkins.jobs.compile_master, project.jenkins.views."test view" ] }
+        taskUnderTest.execute()
+
+        then:
+        with (mockJenkinsRESTService) {
+            1 * getConfiguration(theproject.jenkins.jobs.compile_master.definition.name, _) >> { jobXml }
+            1 * getConfiguration(theproject.jenkins.views."test view".name, _) >> { viewXml }
         }
-
-        def remoteDir = new File(fixtures.project.buildDir, "remotes")
-        assert remoteDir.exists()
-        assert new File(remoteDir, "/test1/jobs/compile_master.xml").text == TestFixtures.BASE_JOB_XML
-        assert new File(remoteDir, "/test1/jobs/compile_develop.xml").text == TestFixtures.BASE_JOB_XML
-        assert new File(remoteDir, "/test1/views/test view.xml").text == TestFixtures.BASE_JOB_XML
+        job1.exists() && new Diff(BASE_JOB_XML, job1.getText()).similar()
+        jobDir.listFiles().length == 1
+        view1.exists() && new Diff(viewXml, view1.getText()).similar()
+        viewDir.listFiles().length == 1
     }
 }

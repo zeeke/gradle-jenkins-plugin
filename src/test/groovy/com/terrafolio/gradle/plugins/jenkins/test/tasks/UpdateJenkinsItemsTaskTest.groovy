@@ -1,98 +1,12 @@
 package com.terrafolio.gradle.plugins.jenkins.test.tasks
 
-import com.terrafolio.gradle.plugins.jenkins.service.JenkinsRESTServiceImpl
-import com.terrafolio.gradle.plugins.jenkins.service.JenkinsService
-import com.terrafolio.gradle.plugins.jenkins.service.JenkinsServiceFactory
+import com.terrafolio.gradle.plugins.jenkins.tasks.AbstractJenkinsTask
 import com.terrafolio.gradle.plugins.jenkins.tasks.UpdateJenkinsItemsTask
-import nebula.test.ProjectSpec
-import org.junit.Ignore
 
-class UpdateJenkinsItemsTaskTest extends ProjectSpec {
-    def JenkinsService mockJenkinsRESTService
-    def UpdateJenkinsItemsTask taskUnderTest
-
-    def void setup() {
-        project.apply plugin: 'jenkins'
-
-        project.ext.branches = [
-                master  : [ parents: [ ] ],
-                develop : [ parents: [ 'master' ] ],
-                releaseX: []
-        ]
-
-        project.jenkins {
-            servers {
-                test1 {
-                    url 'test1'
-                    username 'test1'
-                    password 'test1'
-                }
-                test2 {
-                    url 'test2'
-                    username 'test2'
-                    password 'test2'
-                }
-            }
-            templates {
-                compile {
-                    xml """
-                            <project>
-                                <actions></actions>
-                                <description></description>
-                                <keepDependencies>false</keepDependencies>
-                                <properties></properties>
-                                <scm class='hudson.scm.NullSCM'></scm>
-                                <canRoam>true</canRoam>
-                                <disabled>false</disabled>
-                                <blockBuildWhenDownstreamBuilding>false</blockBuildWhenDownstreamBuilding>
-                                <blockBuildWhenUpstreamBuilding>false</blockBuildWhenUpstreamBuilding>
-                                <triggers class='vector'></triggers>
-                                <concurrentBuild>false</concurrentBuild>
-                                <builders></builders>
-                                <publishers></publishers>
-                                <buildWrappers></buildWrappers>
-                                </project>
-                    """
-                }
-            }
-            jobs {
-                project.branches.eachWithIndex { branchName, map, index ->
-                    "compile_${branchName}" {
-                        server servers.test1
-                        definition {
-                            name "${project.name} compile (${branchName})"
-                            xml templates.compile.xml
-                        }
-                    }
-                }
-            }
-            views {
-                "test view" {
-                    type "ListView"
-                    server servers.test1
-                    dsl { }
-                }
-            }
-        }
-
-        mockJenkinsRESTService = Mock(JenkinsRESTServiceImpl)
-        taskUnderTest = project.task('taskUnderTest', type: UpdateJenkinsItemsTask)
-        injectFactory(taskUnderTest)
-    }
-
-    @Ignore
-    def injectFactory(UpdateJenkinsItemsTask task) {
-        task.serviceFactory = new JenkinsServiceFactory() {
-            @Override
-            JenkinsService getService(String url) {
-                return mockJenkinsRESTService
-            }
-
-            @Override
-            JenkinsService getService(String url, String username, String password) {
-                return mockJenkinsRESTService
-            }
-        }
+class UpdateJenkinsItemsTaskTest extends JenkinsPluginTaskSpec {
+    @Override
+    AbstractJenkinsTask createTaskUnderTest() {
+        return project.task('taskUnderTest', type: UpdateJenkinsItemsTask)
     }
 
     def "execute updates one job" () {
@@ -384,7 +298,7 @@ class UpdateJenkinsItemsTaskTest extends ProjectSpec {
     def "execute updates multiple jobs" () {
         setup:
         def jobName1 = project.jenkins.jobs.compile_master.definition.name
-        def jobName2 = project.jenkins.jobs.compile_releaseX.definition.name
+        def jobName2 = project.jenkins.jobs.compile_develop.definition.name
         def differenceXml = """
             <project>
                 <actions></actions>
@@ -405,7 +319,7 @@ class UpdateJenkinsItemsTaskTest extends ProjectSpec {
         """
         project.tasks.taskUnderTest {
             update(project.jenkins.jobs.compile_master)
-            update(project.jenkins.jobs.compile_releaseX)
+            update(project.jenkins.jobs.compile_develop)
         }
 
         when:
@@ -444,7 +358,7 @@ class UpdateJenkinsItemsTaskTest extends ProjectSpec {
         with(mockJenkinsRESTService) {
             0 * createConfiguration(*_)
 
-            1 * getConfiguration(jobName, { it.uri == "/job/${jobName}/config.xml" }) >> {
+            1 * getConfiguration(jobName, { it.uri == "job/${jobName}/config.xml" }) >> {
                 """
                     <project>
                         <actions></actions>
@@ -465,7 +379,7 @@ class UpdateJenkinsItemsTaskTest extends ProjectSpec {
                 """
             }
 
-            1 * updateConfiguration(jobName, _, { it.uri == "/job/${jobName}/config.xml" })
+            1 * updateConfiguration(jobName, _, { it.uri == "job/${jobName}/config.xml" })
         }
     }
 
@@ -483,9 +397,9 @@ class UpdateJenkinsItemsTaskTest extends ProjectSpec {
         with(mockJenkinsRESTService) {
             0 * updateConfiguration(* _)
 
-            1 * getConfiguration(jobName, { it.uri == "/job/${jobName}/config.xml" })
+            1 * getConfiguration(jobName, { it.uri == "job/${jobName}/config.xml" })
 
-            1 * createConfiguration(jobName, _, { it.uri == "/createItem" && it.params.name == jobName })
+            1 * createConfiguration(jobName, _, { it.uri == "createItem" && it.params.name == jobName })
         }
     }
 
@@ -503,7 +417,7 @@ class UpdateJenkinsItemsTaskTest extends ProjectSpec {
         with(mockJenkinsRESTService) {
             0 * createConfiguration(*_)
 
-            1 * getConfiguration(viewName, { it.uri == "/view/${viewName}/config.xml" }) >> {
+            1 * getConfiguration(viewName, { it.uri == "view/${viewName}/config.xml" }) >> {
                 """
                     <hudson.model.ListView>
                       <filterExecutors>true</filterExecutors>
@@ -518,7 +432,7 @@ class UpdateJenkinsItemsTaskTest extends ProjectSpec {
                 """
             }
 
-            1 * updateConfiguration(viewName, _, { it.uri == "/view/${viewName}/config.xml" })
+            1 * updateConfiguration(viewName, _, { it.uri == "view/${viewName}/config.xml" })
         }
     }
 
@@ -536,9 +450,9 @@ class UpdateJenkinsItemsTaskTest extends ProjectSpec {
         with(mockJenkinsRESTService) {
             0 * updateConfiguration(* _)
 
-            1 * getConfiguration(viewName, { it.uri == "/view/${viewName}/config.xml" })
+            1 * getConfiguration(viewName, { it.uri == "view/${viewName}/config.xml" })
 
-            1 * createConfiguration(viewName, _, { it.uri == "/createView" && it.params.name == viewName })
+            1 * createConfiguration(viewName, _, { it.uri == "createView" && it.params.name == viewName })
         }
     }
 
@@ -566,10 +480,10 @@ class UpdateJenkinsItemsTaskTest extends ProjectSpec {
     def "update adds lazy closure with multiple items" () {
         setup:
         def jobName1 = project.jenkins.jobs.compile_master.definition.name
-        def jobName2 = project.jenkins.jobs.compile_releaseX.definition.name
+        def jobName2 = project.jenkins.jobs.compile_develop.definition.name
 
         project.tasks.taskUnderTest {
-            update { [ project.jenkins.jobs.compile_master, project.jenkins.jobs.compile_releaseX ] }
+            update { [ project.jenkins.jobs.compile_master, project.jenkins.jobs.compile_develop ] }
         }
 
         expect:

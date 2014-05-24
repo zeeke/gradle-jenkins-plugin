@@ -1,171 +1,118 @@
 package com.terrafolio.gradle.plugins.jenkins.test.tasks
 
-import com.terrafolio.gradle.plugins.jenkins.JenkinsPlugin
-import com.terrafolio.gradle.plugins.jenkins.service.JenkinsRESTServiceImpl
+import com.terrafolio.gradle.plugins.jenkins.tasks.AbstractJenkinsTask
 import com.terrafolio.gradle.plugins.jenkins.tasks.JenkinsValidationException
-import groovy.mock.interceptor.MockFor
-import org.gradle.api.Project
+import com.terrafolio.gradle.plugins.jenkins.tasks.ValidateJenkinsItemsTask
 import org.gradle.api.tasks.TaskExecutionException
-import org.gradle.testfixtures.ProjectBuilder
-import org.junit.Before
-import org.junit.Test
 
-class ValidateJenkinsItemsTaskTest {
-    def private final Project project = ProjectBuilder.builder().withProjectDir(new File('build/tmp/test')).build()
-    def private final JenkinsPlugin plugin = new JenkinsPlugin()
-    def MockFor mockJenkinsRESTService
-
-    @Before
-    def void setupProject() {
-        plugin.apply(project)
-
-        project.ext.branches = [
-                master  : [ parents: [ ] ],
-                develop : [ parents: [ 'master' ] ],
-                releaseX: []
-        ]
-
-        project.jenkins {
-            servers {
-                test1 {
-                    url 'test1'
-                    username 'test1'
-                    password 'test1'
-                }
-                test2 {
-                    url 'test2'
-                    username 'test2'
-                    password 'test2'
-                }
-            }
-            templates {
-                compile {
-                    xml "<project><actions></actions><description></description><keepDependencies>false</keepDependencies><properties></properties><scm class='hudson.scm.NullSCM'></scm><canRoam>true</canRoam><disabled>false</disabled><blockBuildWhenDownstreamBuilding>false</blockBuildWhenDownstreamBuilding><blockBuildWhenUpstreamBuilding>false</blockBuildWhenUpstreamBuilding><triggers class='vector'></triggers><concurrentBuild>false</concurrentBuild><builders></builders><publishers></publishers><buildWrappers></buildWrappers></project>"
-                }
-            }
-            jobs {
-                project.branches.eachWithIndex { branchName, map, index ->
-                    "compile_${branchName}" {
-                        server servers.test1
-                        definition {
-                            name "${project.name} compile (${branchName})"
-                            xml templates.compile.xml
-                        }
-                    }
-                }
-            }
-            views {
-                test {
-                    server servers.test1
-                    xml """
-                        <hudson.model.ListView>
-                          <filterExecutors>false</filterExecutors>
-                          <filterQueue>false</filterQueue>
-                          <properties class="hudson.model.View\$PropertyList"/>
-                          <jobNames class="tree-set">
-                            <comparator class="hudson.util.CaseInsensitiveComparator"/>
-                          </jobNames>
-                          <jobFilters/>
-                          <columns/>
-                        </hudson.model.ListView>
-                    """
-                }
-            }
-        }
-
-        mockJenkinsRESTService = new MockFor(JenkinsRESTServiceImpl.class)
+/**
+ * Created by ghale on 5/21/14.
+ */
+class ValidateJenkinsItemsTaskTest extends JenkinsPluginTaskSpec {
+    @Override
+    AbstractJenkinsTask createTaskUnderTest() {
+        return project.task('taskUnderTest', type: ValidateJenkinsItemsTask)
     }
 
-    @Test
-    def void execute_SucceedsOnNoDifference() {
-        mockJenkinsRESTService.demand.with {
-            getConfiguration(3) { String jobName, Map overrides ->
-                "<project><actions></actions><description></description><keepDependencies>false</keepDependencies><properties></properties><scm class='hudson.scm.NullSCM'></scm><canRoam>true</canRoam><disabled>false</disabled><blockBuildWhenDownstreamBuilding>false</blockBuildWhenDownstreamBuilding><blockBuildWhenUpstreamBuilding>false</blockBuildWhenUpstreamBuilding><triggers class='vector'></triggers><concurrentBuild>false</concurrentBuild><builders></builders><publishers></publishers><buildWrappers></buildWrappers></project>"
-            }
+    def "execute succeeds on no difference" () {
+        setup:
+        def theproject = project
+        def jobxml = BASE_JOB_XML
 
-            getConfiguration() { String viewName, Map overrides ->
-                """
-                    <hudson.model.ListView>
-                      <filterExecutors>false</filterExecutors>
-                      <filterQueue>false</filterQueue>
-                      <properties class="hudson.model.View\$PropertyList"/>
-                      <jobNames class="tree-set">
-                        <comparator class="hudson.util.CaseInsensitiveComparator"/>
-                      </jobNames>
-                      <jobFilters/>
-                      <columns/>
-                    </hudson.model.ListView>
-                """
-            }
-        }
+        when:
+        taskUnderTest.validate(project.jenkins.jobs.compile_master)
+        taskUnderTest.execute()
 
-        mockJenkinsRESTService.use {
-            project.tasks.validateJenkinsJobs.execute()
+        then:
+        with(mockJenkinsRESTService) {
+            1 * getConfiguration(theproject.jenkins.jobs.compile_master.definition.name,_) >> { jobxml }
         }
+        noExceptionThrown()
     }
 
-    @Test(expected = JenkinsValidationException)
-    def void execute_FailsOnDifference() {
-        mockJenkinsRESTService.demand.with {
-            getConfiguration(3) { String jobName, Map overrides ->
-                "<project><actions></actions><description></description><keepDependencies>true</keepDependencies><properties></properties><scm class='hudson.scm.NullSCM'></scm><canRoam>true</canRoam><disabled>false</disabled><blockBuildWhenDownstreamBuilding>false</blockBuildWhenDownstreamBuilding><blockBuildWhenUpstreamBuilding>false</blockBuildWhenUpstreamBuilding><triggers class='vector'></triggers><concurrentBuild>false</concurrentBuild><builders></builders><publishers></publishers><buildWrappers></buildWrappers></project>"
-            }
+    def "execute succeeds on no difference with lazy closure" () {
+        setup:
+        def theproject = project
+        def jobxml = BASE_JOB_XML
 
-            getConfiguration { String viewName, Map overrides ->
-                """
-                    <hudson.model.ListView>
-                      <filterExecutors>true</filterExecutors>
-                      <filterQueue>false</filterQueue>
-                      <properties class="hudson.model.View\$PropertyList"/>
-                      <jobNames class="tree-set">
-                        <comparator class="hudson.util.CaseInsensitiveComparator"/>
-                      </jobNames>
-                      <jobFilters/>
-                      <columns/>
-                    </hudson.model.ListView>
-                """
-            }
-        }
+        when:
+        taskUnderTest.validate { project.jenkins.jobs.compile_master }
+        taskUnderTest.execute()
 
-        mockJenkinsRESTService.use {
-            try {
-                project.tasks.validateJenkinsJobs.execute()
-            } catch (TaskExecutionException e) {
-                throw e.cause
-            }
+        then:
+        with(mockJenkinsRESTService) {
+            1 * getConfiguration(theproject.jenkins.jobs.compile_master.definition.name,_) >> { jobxml }
         }
+        noExceptionThrown()
     }
 
-    @Test
-    def void execute_SucceedsWhenFailOnDifferenceFalse() {
-        mockJenkinsRESTService.demand.with {
-            getConfiguration(3) { String jobName, Map overrides ->
-                "<project><actions></actions><description>difference</description><keepDependencies>true</keepDependencies><properties></properties><scm class='hudson.scm.NullSCM'></scm><canRoam>true</canRoam><disabled>false</disabled><blockBuildWhenDownstreamBuilding>false</blockBuildWhenDownstreamBuilding><blockBuildWhenUpstreamBuilding>false</blockBuildWhenUpstreamBuilding><triggers class='vector'></triggers><concurrentBuild>false</concurrentBuild><builders></builders><publishers></publishers><buildWrappers></buildWrappers></project>"
-            }
+    def "execute fails on difference" () {
+        setup:
+        def theproject = project
+        def diffxml = BASE_JOB_XML.replaceFirst('true', 'false')
 
-            getConfiguration() { String viewName, Map overrides ->
-                """
-                    <hudson.model.ListView>
-                      <filterExecutors>true</filterExecutors>
-                      <filterQueue>false</filterQueue>
-                      <properties class="hudson.model.View\$PropertyList"/>
-                      <jobNames class="tree-set">
-                        <comparator class="hudson.util.CaseInsensitiveComparator"/>
-                      </jobNames>
-                      <jobFilters/>
-                      <columns/>
-                    </hudson.model.ListView>
-                """
-            }
-        }
+        when:
+        taskUnderTest.validate(project.jenkins.jobs.compile_master)
+        taskUnderTest.execute()
 
-        project.tasks.validateJenkinsJobs.failOnDifference = false
-        mockJenkinsRESTService.use {
-            try {
-                project.tasks.validateJenkinsJobs.execute()
-            } catch (TaskExecutionException e) {
-                throw e.cause
-            }
+        then:
+        with(mockJenkinsRESTService) {
+            1 * getConfiguration(theproject.jenkins.jobs.compile_master.definition.name,_) >> { diffxml }
         }
+        def e = thrown(TaskExecutionException)
+        e.cause.class == JenkinsValidationException
+    }
+
+    def "execute succeeds when failOnDifference is false" () {
+        setup:
+        def theproject = project
+        def jobxml = BASE_JOB_XML
+        def diffxml = BASE_JOB_XML.replaceFirst('true', 'false')
+
+        when:
+        taskUnderTest.failOnDifference = false
+        taskUnderTest.validate(project.jenkins.jobs.compile_master)
+        taskUnderTest.execute()
+
+        then:
+        with(mockJenkinsRESTService) {
+            1 * getConfiguration(theproject.jenkins.jobs.compile_master.definition.name,_) >> { diffxml }
+        }
+        noExceptionThrown()
+    }
+
+    def "execute succeeds on no difference with multiple items" () {
+        setup:
+        def theproject = project
+        def jobxml = BASE_JOB_XML
+
+        when:
+        taskUnderTest.validate(project.jenkins.jobs.compile_master)
+        taskUnderTest.validate(project.jenkins.views."test view")
+        taskUnderTest.execute()
+
+        then:
+        with(mockJenkinsRESTService) {
+            1 * getConfiguration(theproject.jenkins.jobs.compile_master.definition.name,_) >> { jobxml }
+            1 * getConfiguration(theproject.jenkins.views."test view".name,_) >> { theproject.jenkins.views."test view".xml }
+        }
+        noExceptionThrown()
+    }
+
+    def "execute succeeds on no difference with lazy closure and multiple items" () {
+        setup:
+        def theproject = project
+        def jobxml = BASE_JOB_XML
+
+        when:
+        taskUnderTest.validate { [ project.jenkins.jobs.compile_master, project.jenkins.views."test view" ] }
+        taskUnderTest.execute()
+
+        then:
+        with(mockJenkinsRESTService) {
+            1 * getConfiguration(theproject.jenkins.jobs.compile_master.definition.name,_) >> { jobxml }
+            1 * getConfiguration(theproject.jenkins.views."test view".name,_) >> { theproject.jenkins.views."test view".xml }
+        }
+        noExceptionThrown()
     }
 }
